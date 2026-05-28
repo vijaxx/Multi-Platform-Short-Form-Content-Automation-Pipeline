@@ -1,0 +1,36 @@
+# SECRETS — never commit
+config/credentials.json
+config/*cookies*.json
+config/*.token
+config/*.secret
+*.key
+*.pem
+
+# Generated content (re-creatable)
+reels/
+processing/
+logs/
+
+# Stock BGM (re-downloadable from archive.org / Kevin MacLeod)
+bgm/
+!bgm/.gitkeep
+
+# Personal / unrelated
+WhatsApp*/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.python-version
+
+# OS
+.DS_Store
+._*
+Thumbs.db
+
+# Chrome profile (huge + per-machine)
+chrome_profile/
+*.disabled
