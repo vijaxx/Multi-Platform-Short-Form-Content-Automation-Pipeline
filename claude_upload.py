@@ -150,16 +150,14 @@ Pick the SINGLE best-fitting quote for this footage. Output ONLY its number, not
     return chosen
 
 
-def render(clip_path: Path, quote: str, day_n: int, theme: str) -> Path:
-    """Run process_clip with letterbox/vintage/serif style + DAY-N hook + end-card CTA."""
-    print(f"[3/4] rendering (letterbox + vintage + serif + DAY {day_n} hook + endcard)...")
+def render(clip_path: Path, quote: str, theme: str) -> Path:
+    """Run process_clip in fill style (modern viral) + end-card CTA. Bold huge quote text."""
+    print(f"[3/4] rendering (fill + bold quote + endcard)...")
     out = REELS / f"{clip_path.stem}_reel.mp4"
     res = subprocess.run(
         ["python3", str(BASE / "process_clip.py"),
          str(clip_path), quote,
-         "--style", "letterbox",
-         "--day", str(day_n),
-         "--theme", theme,
+         "--style", "fill",
          "--output", str(out)],
         capture_output=True, text=True,
     )
@@ -169,7 +167,7 @@ def render(clip_path: Path, quote: str, day_n: int, theme: str) -> Path:
     return out
 
 
-def claude_youtube_metadata(quote: str, clip_tags: str, day_n: int, theme: str, cfg: dict) -> dict:
+def claude_youtube_metadata(quote: str, clip_tags: str, theme: str, cfg: dict) -> dict:
     """Ask Claude for ALL platform metadata in one call.
     Returns: title, yt_description (full SEO), fb_caption (short), rumble_description (medium), tags."""
     import anthropic
@@ -178,12 +176,11 @@ def claude_youtube_metadata(quote: str, clip_tags: str, day_n: int, theme: str, 
     msg = ai.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1200,
-        messages=[{"role": "user", "content": f"""Write metadata for FrameWise Cinema Day {day_n} (motivational reels — cinematic footage + powerful quotes). Cross-posted to YouTube Shorts, Rumble, and Facebook Reels.
+        messages=[{"role": "user", "content": f"""Write metadata for FrameWise Cinema (motivational reels — cinematic footage + powerful quotes). Cross-posted to YouTube Shorts, Rumble, and Facebook Reels.
 
 Footage shows: {clip_tags}
 On-screen quote: "{quote}"
 Theme: {theme}
-Day: {day_n}
 
 VIRAL TITLE FORMULA (≤60 chars, MUST USE ONE of these patterns):
   • Question hook: "Why do successful people…?" / "What if you stopped…?"
@@ -191,14 +188,13 @@ VIRAL TITLE FORMULA (≤60 chars, MUST USE ONE of these patterns):
   • Number hook: "3 words that change everything"
   • Negative hook: "Stop doing this if you want…"
   • Secret hook: "The secret most people miss…"
-Title MUST include "Day {day_n}" prefix or suffix, AND end with "#Shorts".
+Title MUST end with "#Shorts". Do NOT mention day numbers or series indices.
 
 YT_DESCRIPTION (full SEO, 1500-3000 chars):
   Line 1: the quote, in quotes, with author if known (else attribute "— Unknown")
   Blank line
   2-3 short paragraphs expanding the wisdom + inviting reflection (use line breaks generously)
   Blank line
-  "📅 Day {day_n} of the FrameWise Cinema daily series."
   "⏰ New short 3x daily — 8:30 AM, 1:30 PM, 7:30 PM IST."
   "🎬 Follow @FrameWiseCinema for daily wisdom"
   Blank line
@@ -225,7 +221,7 @@ RUMBLE_DESCRIPTION (medium SEO, 600-1000 chars, Rumble likes keyword-rich):
   Blank line
   2 short paragraphs of wisdom expansion
   Blank line
-  "Day {day_n} | FrameWise Cinema daily motivational shorts"
+  "FrameWise Cinema — daily motivational shorts"
   "Subscribe + follow @FrameWiseCinema on Rumble for daily wisdom."
   Blank line
   15 keyword hashtags.
@@ -372,9 +368,10 @@ def youtube_pin_engagement_comment(video_id: str, day_n: int, cfg: dict) -> bool
             "Save this for the day you forget your why. 💛",
             "Tag someone who needs this today.",
             "Drop a 🔥 if this reached you.",
-            "Day {n} of {n}. What's your favorite so far?",
+            "What quote keeps you going? Share below 👇",
+            "Did this hit you the way it hit me?",
         ]
-        text = prompts[day_n % len(prompts)].replace("{n}", str(day_n))
+        text = prompts[day_n % len(prompts)]
         resp = yt.commentThreads().insert(part="snippet", body={
             "snippet": {
                 "videoId": video_id,
@@ -496,34 +493,28 @@ def main():
     theme = args.theme or random.choice(
         ["success","nature","city","people","abstract","sport","journey","reflection"])
 
-    # Don't burn through the day counter on dry-runs (we never publish those)
-    if args.dry_run:
-        try:
-            day_n = json.loads((BASE / "logs" / "day_counter.json").read_text()).get("day", 0) + 1
-        except Exception:
-            day_n = 1
-    else:
-        day_n = _next_day_number()
-    print(f"\n=== FrameWise Cinema — Day {day_n}{' (dry-run, counter NOT incremented)' if args.dry_run else ''} ===\n")
+    print(f"\n=== FrameWise Cinema run{'  (dry-run)' if args.dry_run else ''} ===\n")
 
     clip, tags = fetch_pixabay(theme)
     quote = pick_quote_with_claude(tags, cfg)
     quote_theme = quote.get("theme", theme) or theme
-    reel = render(clip, quote["quote"], day_n, quote_theme)
+    reel = render(clip, quote["quote"], quote_theme)
 
     if args.dry_run:
         print(f"\nDRY RUN — local reel ready: {reel}")
         return
 
-    meta = claude_youtube_metadata(quote["quote"], tags, day_n, quote_theme, cfg)
+    meta = claude_youtube_metadata(quote["quote"], tags, quote_theme, cfg)
     privacy = "public" if args.public else "unlisted"
     vid = upload_youtube(reel, meta, cfg, privacy)
     print(f"\nDONE YouTube [{privacy}]")
     print(f"  https://youtube.com/shorts/{vid}")
 
     # Algo boosters — playlist + pinned comment. Failures don't break the pipeline.
+    # Use upload count for comment-rotation index (replaces day_n).
     youtube_add_to_playlist(vid, cfg)
-    youtube_pin_engagement_comment(vid, day_n, cfg)
+    comment_idx = _next_day_number()  # kept as a rolling counter for comment rotation only
+    youtube_pin_engagement_comment(vid, comment_idx, cfg)
 
     # Cross-post to Rumble if enabled (failures don't break the YT pipeline)
     if "rumble" in enabled and not args.no_rumble:

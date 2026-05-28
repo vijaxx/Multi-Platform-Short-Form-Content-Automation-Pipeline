@@ -197,6 +197,9 @@ def upload(video_path: Path, title: str, description: str, tags: List[str], cfg:
     time.sleep(8)
 
     log.info("FB: clicking 'Reel' button")
+    # The 'Reel' button often sits below the viewport when the page first loads
+    # (especially with a narrow Chrome window). Find it, scroll it into the
+    # center of the viewport, then click via CDP.
     reel_id = d.execute_script("""
     var found = null;
     document.querySelectorAll('div').forEach(function(el){
@@ -209,9 +212,34 @@ def upload(video_path: Path, title: str, description: str, tags: List[str], cfg:
     return found;
     """)
     if not reel_id:
+        # Sometimes FB renders Reel as a button instead of a div; or it's still loading
+        d.execute_script("window.scrollTo(0, 400);")
+        time.sleep(2)
+        reel_id = d.execute_script("""
+        var found = null;
+        document.querySelectorAll('[aria-label="Reel"], [aria-label="Reels"]').forEach(function(el){
+            if(found || el.offsetParent === null) return;
+            if(!el.id) el.id = 'fb_reel_btn';
+            found = el.id;
+        });
+        return found;
+        """)
+    if not reel_id:
         raise RuntimeError("FB: 'Reel' button not found on Page profile")
+
+    # Scroll the Reel button into center of viewport so cdp_click's viewport check passes
+    d.execute_script("""
+    var el = document.getElementById(arguments[0]);
+    if (el) el.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+    """, reel_id)
+    time.sleep(1.5)
+
     if not cdp_click(reel_id):
-        raise RuntimeError("FB: failed to click 'Reel' button")
+        # Retry once after scrolling up to the top (different Chrome window heights need different positioning)
+        d.execute_script("window.scrollTo(0, 0); document.getElementById(arguments[0]).scrollIntoView({block: 'center'});", reel_id)
+        time.sleep(1.5)
+        if not cdp_click(reel_id):
+            raise RuntimeError("FB: failed to click 'Reel' button (still off-viewport after scroll)")
     time.sleep(5)
 
     # ---- Stage 2: send video file ----

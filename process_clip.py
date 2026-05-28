@@ -179,9 +179,16 @@ def burn_sub_step(input_path: Path, quote: str, tmp_dir: str,
     ]
     font_paths = bold_paths if bold else italic_sans_paths
 
-    # bold (fill mode) = big, screams. letterbox = small italic sans-serif (reference style).
+    # bold (fill mode) = HUGE, viral-style. letterbox = small italic sans-serif (vintage style).
     if bold:
-        font_size = max(56, int(CANVAS_H * 0.058))   # ~111 on 1920
+        # ADAPTIVE: scale font to keep the wrapped quote inside the bottom ~55% of canvas (no clipping).
+        # Try 138px first; if 5+ lines, drop down so total height fits.
+        font_size = int(CANVAS_H * 0.072)            # 138 on 1920 — default
+        quote_chars = len(quote)
+        if quote_chars > 70:  font_size = int(CANVAS_H * 0.060)   # ~115
+        if quote_chars > 100: font_size = int(CANVAS_H * 0.050)   # ~96
+        if quote_chars > 130: font_size = int(CANVAS_H * 0.043)   # ~82
+        font_size = max(72, font_size)
     else:
         font_size = max(28, int(video_h * 0.040))  # smaller, refined
     font = None
@@ -210,19 +217,51 @@ def burn_sub_step(input_path: Path, quote: str, tmp_dir: str,
     img = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # wrap narrower when bold (bigger chars per line)
-    wrap_width = 22 if bold else 36   # smaller italic = wider wrap
+    # Wrap width scaled to font size so lines actually fit canvas width (Impact ~0.46x).
+    # Anything wider than ~95% of canvas overflows the screen on retina mobile.
+    if bold:
+        wrap_width = max(12, int(CANVAS_W * 0.92 / (font_size * 0.46)))
+    else:
+        wrap_width = 36
     lines = textwrap.wrap(quote, wrap_width) or [quote]
-    line_height = int(font_size * 1.25)  # tighter for small italic
+    line_height = int(font_size * 1.15)  # tight line spacing for bold mode
+
+    # Safety net: if any line still measures too wide, shrink font + re-wrap.
+    if bold:
+        max_line_w = int(CANVAS_W * 0.92)
+        # Measure widest line
+        widest = max((draw.textbbox((0, 0), L, font=font)[2] for L in lines), default=0)
+        if widest > max_line_w:
+            font_size = int(font_size * max_line_w / widest)
+            for fp in font_paths:
+                if os.path.exists(fp):
+                    try: font = ImageFont.truetype(fp, font_size, index=0); break
+                    except Exception: continue
+            wrap_width = max(12, int(CANVAS_W * 0.92 / (font_size * 0.46)))
+            lines = textwrap.wrap(quote, wrap_width) or [quote]
+            line_height = int(font_size * 1.15)
+        # If total height still exceeds 62% of canvas, shrink further.
+        total_h = len(lines) * line_height
+        max_text_h = int(CANVAS_H * 0.62)
+        if total_h > max_text_h:
+            font_size = int(max_text_h / len(lines) / 1.15)
+            for fp in font_paths:
+                if os.path.exists(fp):
+                    try: font = ImageFont.truetype(fp, font_size, index=0); break
+                    except Exception: continue
+            line_height = int(font_size * 1.15)
     total_text_h = len(lines) * line_height
 
     # Letterbox mode: center quote in the video strip (reference-reel style).
-    # Bold/fill mode: keep lower-third placement (legacy convention).
+    # Bold/fill mode: lower half but anchored so the BOTTOM of the text sits at 92% of canvas
+    # — guaranteed to never clip off the bottom regardless of quote length.
     if bold:
-        text_center_y = int(CANVAS_H * 0.78)
+        total_text_h = len(lines) * line_height
+        text_bottom_y = int(CANVAS_H * 0.92)
+        text_start_y = text_bottom_y - total_text_h
     else:
         text_center_y = video_y + video_h // 2  # exact center of video strip
-    text_start_y = text_center_y - total_text_h // 2
+        text_start_y = text_center_y - total_text_h // 2
 
     # translucent gradient backdrop behind text (only for bold fill mode)
     if bold:
@@ -382,7 +421,8 @@ def burn_intro_hook_step(input_path: Path, tmp_dir: str, day_n: int, theme: str)
 
 def burn_endcard_step(input_path: Path, tmp_dir: str) -> Path:
     """Burn a 'Follow @FrameWiseCinema' CTA on the last 1.6s of video.
-    Drives subscriber rate across all platforms."""
+    Drives subscriber rate across all platforms.
+    Full-frame dim + centered bold CTA — quote is hidden under the dim for a clean subscribe moment."""
     from PIL import Image, ImageDraw
 
     info = get_video_info(input_path)
@@ -396,40 +436,47 @@ def burn_endcard_step(input_path: Path, tmp_dir: str) -> Path:
         "/System/Library/Fonts/HelveticaNeue.ttc",
         "/System/Library/Fonts/Helvetica.ttc",
     ]
-    big = _font(bold_paths, max(64, int(CANVAS_H * 0.045)))
-    small = _font(bold_paths, max(32, int(CANVAS_H * 0.022)))
+    big   = _font(bold_paths, max(78, int(CANVAS_H * 0.062)))
+    small = _font(bold_paths, max(34, int(CANVAS_H * 0.024)))
 
     img = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Strong gradient backdrop along the bottom third
-    backdrop_top = int(CANVAS_H * 0.62)
-    backdrop_bot = int(CANVAS_H * 0.92)
-    for i in range(backdrop_bot - backdrop_top):
-        alpha = int(190 * (i / (backdrop_bot - backdrop_top)))
-        draw.line([(0, backdrop_top + i), (CANVAS_W, backdrop_top + i)],
-                  fill=(0, 0, 0, alpha))
+    # FULL-FRAME 70% black dim — hides quote, makes CTA pop
+    draw.rectangle([(0, 0), (CANVAS_W, CANVAS_H)], fill=(0, 0, 0, 180))
 
-    cta_main = "FOLLOW @FrameWiseCinema"
-    cta_sub  = "Daily wisdom · 8:30 AM · 1:30 PM · 7:30 PM"
+    cta_main = "FOLLOW"
+    cta_handle = "@FrameWiseCinema"
+    cta_sub = "Daily wisdom · 8:30 · 1:30 · 7:30"
 
-    # Main CTA — centered, gold
+    # FOLLOW — top center, big
     mb = draw.textbbox((0, 0), cta_main, font=big)
     mw = mb[2] - mb[0]; mh = mb[3] - mb[1]
     mx = (CANVAS_W - mw) // 2
-    my = int(CANVAS_H * 0.72)
-    outline = 5
+    my = int(CANVAS_H * 0.36)
+    outline = 6
     for ox in range(-outline, outline + 1):
         for oy in range(-outline, outline + 1):
             if ox == 0 and oy == 0: continue
             draw.text((mx + ox, my + oy), cta_main, font=big, fill=(0, 0, 0, 255))
-    draw.text((mx, my), cta_main, font=big, fill=(255, 213, 79, 255))
+    draw.text((mx, my), cta_main, font=big, fill=(255, 255, 255, 255))
 
-    # Sub line — white, smaller
+    # @handle — below FOLLOW, gold
+    hb = draw.textbbox((0, 0), cta_handle, font=big)
+    hw = hb[2] - hb[0]; hh = hb[3] - hb[1]
+    hx = (CANVAS_W - hw) // 2
+    hy = my + mh + 24
+    for ox in range(-outline, outline + 1):
+        for oy in range(-outline, outline + 1):
+            if ox == 0 and oy == 0: continue
+            draw.text((hx + ox, hy + oy), cta_handle, font=big, fill=(0, 0, 0, 255))
+    draw.text((hx, hy), cta_handle, font=big, fill=(255, 213, 79, 255))
+
+    # Sub-line — small, white
     sb = draw.textbbox((0, 0), cta_sub, font=small)
     sw = sb[2] - sb[0]; sh = sb[3] - sb[1]
     sx = (CANVAS_W - sw) // 2
-    sy = my + mh + 30
+    sy = hy + hh + 40
     for ox in (-2, 0, 2):
         for oy in (-2, 0, 2):
             if ox == 0 and oy == 0: continue
@@ -465,16 +512,10 @@ def main():
     parser.add_argument("--bgm",    help="Specific BGM file")
     parser.add_argument("--no-bgm", action="store_true")
     parser.add_argument("--no-sub", action="store_true")
-    parser.add_argument("--style", choices=["fill", "letterbox"], default="letterbox",
-                        help="letterbox (default, vintage cinema, serif) or fill (modern, full-bleed, bold sans)")
+    parser.add_argument("--style", choices=["fill", "letterbox"], default="fill",
+                        help="fill (default, full-bleed bold sans, modern viral) or letterbox (vintage cinema serif)")
     parser.add_argument("--vintage", action="store_true",
                         help="apply vintage desaturation (default off in fill mode)")
-    parser.add_argument("--day", type=int, default=0,
-                        help="Day number for intro hook (e.g. 'DAY 42'). 0 disables the hook.")
-    parser.add_argument("--theme", default="MOTIVATION",
-                        help="Theme tag for intro hook (under the DAY badge)")
-    parser.add_argument("--no-hook", action="store_true",
-                        help="Skip the first-frame DAY-N intro hook")
     parser.add_argument("--no-endcard", action="store_true",
                         help="Skip the end-card Follow CTA")
     args = parser.parse_args()
@@ -510,11 +551,7 @@ def main():
                                     video_y, video_h,
                                     bold=(args.style == "fill"))
 
-        # Step 3a: First-frame DAY-N intro hook (boosts 3-second retention)
-        if not args.no_hook and args.day > 0:
-            current = burn_intro_hook_step(current, tmp, args.day, args.theme)
-
-        # Step 3b: End-card CTA (drives subscribe rate)
+        # Step 3a: End-card CTA (drives subscribe rate)
         if not args.no_endcard:
             current = burn_endcard_step(current, tmp)
 
