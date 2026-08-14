@@ -1,0 +1,16 @@
+# Core
+anthropic>=0.40.0
+requests>=2.31.0
+Pillow>=10.0.0
+
+# YouTube Data API v3
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+
+# Rumble + Facebook uploaders (Chrome DevTools Protocol attach)
+selenium>=4.15.0
+
+# External, not installable via pip — must be on PATH:
+#   ffmpeg, ffprobe   (brew install ffmpeg)
+#   Google Chrome
