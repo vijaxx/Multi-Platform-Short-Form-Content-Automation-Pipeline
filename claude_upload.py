@@ -270,10 +270,10 @@ TAGS_LIST: <25 tags, comma-separated, no #>"""}],
     tags = [t.strip().lstrip("#") for t in tags_str.split(",") if t.strip()]
 
     return {
-        "title": title or f"Day {day_n} — Daily Wisdom #Shorts",
-        "yt_description": yt_description or f'"{quote}"\n\n📅 Day {day_n} · 🎬 Follow @FrameWiseCinema',
+        "title": title or "Daily Wisdom #Shorts",
+        "yt_description": yt_description or f'"{quote}"\n\n🎬 Follow @FrameWiseCinema',
         "fb_caption": fb_caption or f'"{quote}"\n\n#motivation #FrameWiseCinema #Reels',
-        "rumble_description": rumble_desc or f'"{quote}"\n\nDay {day_n} | FrameWise Cinema',
+        "rumble_description": rumble_desc or f'"{quote}"\n\nFrameWise Cinema',
         "tags": tags or ["Shorts","Motivation","Inspiration"],
     }
 
