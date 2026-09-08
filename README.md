@@ -37,8 +37,9 @@ claude_upload.py          Claude (haiku-4-5) picks the quote whose theme best ma
    (orchestrator)         those tags, from a locally pre-filtered shortlist
         │
         ▼
-process_clip.py           ffmpeg → 1080×1920 canvas, letterboxed + desaturated video
-                          strip, Georgia serif caption, handle overlay, optional BGM
+process_clip.py           ffmpeg → 1080×1920 canvas, full-bleed center-cropped fill,
+                          huge bold outlined caption, handle overlay, follow end-card, optional BGM
+                          (legacy --style letterbox + vintage desaturation still available)
         │
         ▼
 platforms/youtube.py          Data API v3 + OAuth refresh token
