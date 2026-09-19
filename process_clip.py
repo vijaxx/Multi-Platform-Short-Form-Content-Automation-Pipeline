@@ -126,8 +126,12 @@ def create_letterbox(input_path: Path, tmp_dir: str, vintage: bool = True) -> Tu
 def add_bgm_step(input_path: Path, tmp_dir: str, bgm_override: Optional[Path]) -> Path:
     import random
     if bgm_override:
+        if not bgm_override.exists():
+            raise SystemExit(f"--bgm file not found: {bgm_override}")
         bgm_file = bgm_override
     else:
+        if not BGM.is_dir():
+            raise SystemExit(f"No BGM directory at {BGM}. Create it and add .mp3 files, or use --no-bgm.")
         bgm_files = [f for f in BGM.iterdir()
                      if f.suffix.lower() in {".mp3", ".m4a", ".wav", ".aac"} and f.is_file()]
         if not bgm_files:
