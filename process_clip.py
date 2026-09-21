@@ -531,7 +531,7 @@ def main():
     if not args.no_sub and not args.quote:
         raise SystemExit("Provide a quote or use --no-sub.")
 
-    REELS.mkdir(exist_ok=True)
+    REELS.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmp:
         print(f"\nFrameWise Cinema Pipeline")
